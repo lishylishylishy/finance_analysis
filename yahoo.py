@@ -1,20 +1,15 @@
-# Updated Yahoo API Integration
+# Updated yahoo.py
 
-import requests
+# Fixing the API key validation and updating model name
 
-API_KEY = 'your_new_api_key'
+class GoogleGemini:
+    def __init__(self, api_key):
+        self.api_key = api_key
+        self.validate_api_key()
+        self.model_name = 'gemini-2.5-flash'
 
-def validate_api_key(api_key):
-    # For the sake of this example, we'll use a simple checks against Google API standards
-    if len(api_key) < 30:
-        raise ValueError('Invalid API key: Must be at least 30 characters for Google API validation.')
-    return True
+    def validate_api_key(self):
+        if not self.api_key or len(self.api_key) < 40:  # Example validation
+            raise ValueError("Invalid API key")
 
-# Using gemini-2.5-flash model instead of deepseek-chat
-model = 'gemini-2.5-flash'
-
-try:
-    validate_api_key(API_KEY)
-    # Your API call logic here
-except ValueError as e:
-    print(f'Error during API key validation: {e}')
+# Additional methods for Google Gemini functionality

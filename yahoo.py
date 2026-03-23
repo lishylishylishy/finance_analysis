@@ -8,7 +8,7 @@ from datetime import datetime, timedelta
 # ==========================================
 # 1. 用户配置区 (请在此填写你的信息)
 # ==========================================
-GOOGLE_API_KEY = "AIzaSyAFOoSP9Vk6vZQUin1wilupCYkYsqkrFJ0"  # 使用模型Gemini 2.5 Flash
+GOOGLE_API_KEY =  st.secrets["GOOGLE_API_KEY"]  # 使用模型Gemini 2.5 Flash
 GMAIL_ADDRESS = "lishylishylishy123@gmail.com"        # 建议填写：用于 yfinance 下载标识
 DEFAULT_TICKERS = ["GOOGL", "NVDA", "TSLA", "GC=F", "BTC-USD"] # 默认追踪：谷歌、英伟达、特斯拉、黄金、比特币
 

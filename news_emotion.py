@@ -14,9 +14,9 @@ import concurrent.futures
 load_dotenv()
 
 # --- API 核心配置 ---
-API_KEY = os.getenv("QWEN_API_KEY", "")
-BASE_URL = "https://dashscope.aliyuncs.com/compatible-mode/v1"
-MODEL = "qwen3-vl-235b-a22b-thinking" 
+API_KEY = os.getenv("QWEN_API_KEY", "")#
+BASE_URL = "https://dashscope.aliyuncs.com/compatible-mode/v1"#
+MODEL = "qwen3-vl-235b-a22b-thinking" #
 API_TIMEOUT = 120
 MAX_WORKERS = 5
 

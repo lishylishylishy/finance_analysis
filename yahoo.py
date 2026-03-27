@@ -15,9 +15,9 @@ API_KEY = os.getenv("GEMINI_API_KEY")
 # ====================================================================
 # 🛠️ --- 用户专属配置区域 --- 🛠️
 # ====================================================================
-PAGE_TITLE = "全资产相关性研报"#
-PAGE_LAYOUT = "wide"#
-APP_TITLE = "📈 跨资产行情与 AI 相关性分析助手"#
+PAGE_TITLE = "全资产相关性研报"
+PAGE_LAYOUT = "wide"
+APP_TITLE = "📈 跨资产行情与 AI 相关性分析助手"
 
 DEFAULT_SINGLE_TICKER = "WCP.TO"
 

@@ -2,4 +2,7 @@ streamlit
 yfinance
 pandas
 plotly
-openai
+google-generativeai
+python-dotenv
+matplotlib
+tabulate

@@ -19,16 +19,9 @@ PAGE_TITLE = "全资产相关性研报"
 PAGE_LAYOUT = "wide"
 APP_TITLE = "📈 跨资产行情与 AI 相关性分析助手"
 
-DEFAULT_SINGLE_TICKER = "WCP.TO"
-
+# 默认分析清单（稍微缩短一点，防止被雅虎拉黑）
 CORRELATION_TICKERS_INPUT = (
-    "DX-Y.NYB, CNY=X, JPY=X, "
-    "GC=F, XAUUSD=X, 518880.SS, SI=F, XAGUSD=X, 512400.SS, CL=F, BZ=F, USO, HG=F, 501018.SH, XME, "
-    "QQQ, ^N225, ^KS11, ^TA125.TA, ^ITECH, "
-    "601899.SS, 000603.SZ, 600362.SS, "
-    "600900.SS, 601088.SS, WCP.TO, 601886.SS, "
-    "TSLA, GOOGL, MSFT, NVDA, TSM, ITA, LMT, TEVA, "
-    "BTC-USD"
+    "AAPL, MSFT, GOOGL, NVDA, TSLA, META, AMZN"
 )
 
 CORRELATION_PERIOD = "1mo"
@@ -66,14 +59,12 @@ def calculate_financial_correlation(tickers_str, period, interval):
     my_bar = st.progress(0, text=progress_text)
     
     try:
-        # 核心优化：使用 yf 批量下载，避开单个循环请求导致雅虎拉黑 IP
         data = yf.download(tickers, period=period, interval=interval, progress=False)
         
         if data.empty:
             my_bar.empty()
             return None, None
             
-        # 智能提取收盘价
         if 'Adj Close' in data.columns.levels[0]:
             prices = data['Adj Close']
         elif 'Close' in data.columns.levels[0]:
@@ -91,16 +82,14 @@ def calculate_financial_correlation(tickers_str, period, interval):
         
     my_bar.empty()
     
-    # 计算收益率和相关性
     returns = prices.dropna(how='all').pct_change().dropna(how='all')
     corr_matrix = returns.corr()
-    
-    # 清理全是 NaN 的行列
     corr_matrix = corr_matrix.dropna(axis=0, how='all').dropna(axis=1, how='all')
     
     return corr_matrix, list(corr_matrix.columns)
 
-def generate_ai_analysis(matrix_df, tickers):
+# 🌟 注意：这里增加了一个 core_ticker 参数，接收你在网页上输入的核心标的
+def generate_ai_analysis(matrix_df, tickers, core_ticker):
     try:
         genai.configure(api_key=API_KEY)
         model = genai.GenerativeModel(AI_MODEL_NAME)
@@ -108,7 +97,7 @@ def generate_ai_analysis(matrix_df, tickers):
         
         prompt = f"""你是严谨的量化分析师。以下是资产收益率相关性矩阵：
 {matrix_markdown}
-分析核心标的：【{DEFAULT_SINGLE_TICKER}】。
+分析核心标的：【{core_ticker}】。
 1. 格式强制：提及资产必须采用代码格式。
 2. 数值锚定：必须带上相关性系数。
 请严格输出分析报告。"""
@@ -122,7 +111,9 @@ def generate_ai_analysis(matrix_df, tickers):
 # --- 网页 UI ---
 # ====================================================================
 st.sidebar.header("⚙️ 参数配置")
-correlation_tickers_sidebar = st.sidebar.text_area("分析清单", value=CORRELATION_TICKERS_INPUT, height=250)
+# 🌟 新增的输入框：你可以随时在这里修改 AI 关注的核心标的
+core_ticker_sidebar = st.sidebar.text_input("🎯 AI 核心分析标的", value="AAPL")
+correlation_tickers_sidebar = st.sidebar.text_area("分析清单", value=CORRELATION_TICKERS_INPUT, height=150)
 correlation_period_sidebar = st.sidebar.text_input("时间范围", value=CORRELATION_PERIOD)
 correlation_interval_sidebar = st.sidebar.selectbox("数据粒度", options=["1d", "1h", "15m", "5m"])
 
@@ -138,12 +129,13 @@ if st.sidebar.button("🚀 开始跨资产深度分析"):
         if corr_matrix is not None and not corr_matrix.empty:
             st.subheader("📊 资产收益率相关性矩阵")
             styled_matrix = corr_matrix.style.background_gradient(cmap='coolwarm', vmin=-1, vmax=1).format("{:.2f}")
-            st.dataframe(styled_matrix, height=550)
+            st.dataframe(styled_matrix, height=400)
             
             st.markdown("---")
             st.subheader("🤖 AI 量化速递")
             with st.spinner('🧠 AI 正在根据矩阵撰写研报...'):
-                ai_report = generate_ai_analysis(corr_matrix, actual_tickers)
+                # 把网页上填写的核心标的传给 AI
+                ai_report = generate_ai_analysis(corr_matrix, actual_tickers, core_ticker_sidebar)
                 st.info(ai_report)
         else:
             st.error("未能获取到有效的行情数据，请检查资产代码或网络连接。")
@@ -153,7 +145,8 @@ if st.sidebar.button("🚀 开始跨资产深度分析"):
 # ====================================================================
 st.markdown("---")
 with st.expander("🔍 单一资产走势快速核查"):
-    ticker_q = st.text_input("输入代码", value=DEFAULT_SINGLE_TICKER)
+    # 为了方便，这里也默认联动你填写的核心标的
+    ticker_q = st.text_input("输入代码", value=core_ticker_sidebar)
     if ticker_q:
         with st.spinner(f"正在获取 {ticker_q} 的历史走势..."):
             q_data = download_data_for_ticker(
@@ -164,7 +157,6 @@ with st.expander("🔍 单一资产走势快速核查"):
         
         if q_data is not None and not q_data.empty:
             try:
-                # 适配新版 yfinance 多层索引返回
                 price_col = 'Adj Close' if 'Adj Close' in q_data.columns else 'Close'
                 plot_df = q_data[price_col].copy()
                 

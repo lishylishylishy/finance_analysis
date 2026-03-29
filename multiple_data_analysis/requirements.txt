@@ -1,7 +1,7 @@
-pandas
-yfinance
 gspread
 oauth2client
+pandas
+yfinance
 streamlit
 plotly
 google-generativeai

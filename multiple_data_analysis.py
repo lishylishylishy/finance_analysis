@@ -289,7 +289,7 @@ try:
         # 📈 图表 B：短线图表
         # ==========================================
         st.markdown("### 📈 图表 B: 单日涨跌幅波动散点图")
-        fig_scatter = px.scatter(df_returns_filtered.rename(columns=ticker_to_formatted), x='Date', y=[ticker_to_formatted[t] for t in selected_tickers])
+        fig_scatter = px.line(df_returns_filtered.rename(columns=ticker_to_formatted), x='Date', y=[ticker_to_formatted[t] for t in selected_tickers])
         fig_scatter.update_traces(marker_size=3)
         fig_scatter.update_layout(
             height=400, 

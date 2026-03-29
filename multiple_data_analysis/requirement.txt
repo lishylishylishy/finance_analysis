@@ -1,0 +1,8 @@
+pandas
+yfinance
+gspread
+oauth2client
+streamlit
+plotly
+google-generativeai
+python-dotenv

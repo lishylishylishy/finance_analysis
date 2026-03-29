@@ -9,6 +9,7 @@ import plotly.figure_factory as ff
 import google.generativeai as genai
 import os
 from dotenv import load_dotenv
+import json
 
 # ==========================================
 # ⚙️ 核心配置区域
@@ -30,8 +31,17 @@ if GEMINI_API_KEY:
 # ==========================================
 @st.cache_resource
 def get_gspread_client():
-    scope = ['https://spreadsheets.google.com/feeds', 'https://www.googleapis.com/auth/drive']
-    creds = ServiceAccountCredentials.from_json_keyfile_name(JSON_KEY_FILE, scope)
+    scope = ['https://spreadsheets.google.com/feeds', 'https://www.googleapis.com/auth/drive']   
+    # 🌟 核心改动：优先从云端 Secrets 读取
+    if "google_KEY" in st.secrets:
+        # 这里的 st.secrets["google_KEY"] 就是你填在那个黑框里的内容
+        creds_info = json.loads(st.secrets["google_KEY"])
+        creds = ServiceAccountCredentials.from_json_keyfile_dict(creds_info, scope)
+    else:
+        # 如果是在本地运行，保留原来的逻辑读取本地文件
+        JSON_KEY_FILE = 'google_key.json' 
+        creds = ServiceAccountCredentials.from_json_keyfile_name(JSON_KEY_FILE, scope)
+        
     return gspread.authorize(creds)
 
 def get_google_sheet(client, worksheet_name):

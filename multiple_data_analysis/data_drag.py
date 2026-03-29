@@ -5,6 +5,7 @@ from oauth2client.service_account import ServiceAccountCredentials
 import datetime
 import streamlit as st
 import plotly.express as px
+import plotly.figure_factory as ff
 import google.generativeai as genai
 import os
 from dotenv import load_dotenv
@@ -27,6 +28,7 @@ if GEMINI_API_KEY:
 # ==========================================
 # 🛠️ 核心功能函数 (数据抓取与同步)
 # ==========================================
+@st.cache_resource
 def get_gspread_client():
     scope = ['https://spreadsheets.google.com/feeds', 'https://www.googleapis.com/auth/drive']
     creds = ServiceAccountCredentials.from_json_keyfile_name(JSON_KEY_FILE, scope)
@@ -137,26 +139,30 @@ def add_new_assets(tickers_str):
 # ==========================================
 # 🤖 终极 AI 综合大脑
 # ==========================================
-def ai_comprehensive_analysis(df_a, df_b, asset_names, time_range):
+def ai_comprehensive_analysis(df_a, df_b, corr_text, asset_names, time_range):
     if not GEMINI_API_KEY: return "⚠️ 未检测到 API Key，请检查根目录下的 .env 文件配置。"
     try:
         model = genai.GenerativeModel(AI_MODEL_NAME)
         prompt = f"""
-        你是一位顶级的量化金融分析师。请根据以下【两个维度】的数据摘要，为用户提供一份专业的综合投研解读。
+        你是一位严谨的量化金融分析师，基于数据只讲干货，不要废话，更加不要杜撰。请根据以下【三个维度】的数据，为用户提供一份专业的、直白的干货解读。
         
         【分析标的】: {", ".join(asset_names)}
         【时间段】: {time_range}
 
-        【图表 A：长线累计表现摘要 (基准100归一化)】:
+        【图表 A：表现摘要 (起点=100归一化)】:
         {df_a.describe().to_string()}
 
         【图表 B：短线单日涨跌幅摘要 (%)】:
         {df_b.describe().to_string()}
 
-        请用简体中文简明扼要地回答：
-        1. 📈 趋势与收益 (基于图表A)：这段时间谁是赢家？谁表现最差？
-        2. ⚡ 风险与波动 (基于图表B)：根据标准差(std)和极值，谁的脾气最暴躁（高风险）？谁最抗跌稳健？
-        3. 🎯 综合评判：结合它们的收益能力和抗风险能力，客观总结它们的资产特性。
+        【图表 C：资产相关性矩阵 (%)】:
+        {corr_text}
+
+        请用简体中文简明扼要地总结：
+        1. 📈 趋势与表现 (基于图表A)：这段时间谁是收益赢家？谁表现最差？
+        2. ⚡ 风险与波动 (基于图表B)：谁的波动最大？谁最稳健？
+        3. 🎯 相关性与组合配置 (基于图表C)：哪些标的之间同涨同跌相关性很高（难以对冲）？哪些相关性较低（适合组合优化，对冲风险）？
+        4. 基于数据严谨的综合评判。
         """
         return model.generate_content(prompt).text
     except Exception as e:
@@ -165,21 +171,9 @@ def ai_comprehensive_analysis(df_a, df_b, asset_names, time_range):
 # ==========================================
 # 🖥️ 前端 UI 布局
 # ==========================================
-st.set_page_config(page_title="投研中台", layout="wide")
+st.set_page_config(page_title="投研数据中心", layout="wide")
 st.title("🔌 投研数据中心 & AI 实验室")
 
-with st.sidebar:
-    st.header("🛠️ 数据库维护")
-    if st.button("🔄 一键日常同步", use_container_width=True):
-        with st.spinner("同步中..."): daily_sync()
-    
-    st.markdown("---")
-    st.write("🎯 扩充监控池")
-    tickers_input = st.text_input("输入新代码 (逗号分隔):")
-    if st.button("➕ 抓取并入库", use_container_width=True):
-        with st.spinner("抓取中..."): add_new_assets(tickers_input)
-
-st.subheader("📈 资产叠加对比画板")
 try:
     client = get_gspread_client()
     df_db = pd.DataFrame(get_google_sheet(client, WORKSHEET_NAME).get_all_records())
@@ -193,80 +187,138 @@ try:
     all_tickers = [col for col in df_db.columns if col != 'Date']
     available_categories = sorted(list(set([meta_map.get(t, {}).get('Category', 'Unknown') for t in all_tickers])))
     
-    col1, col2 = st.columns(2)
-    with col1:
+    # ==========================================
+    # 👉 侧边栏：所有控制配置和日常维护全部集中在这里
+    # ==========================================
+    with st.sidebar:
+        st.header("🎯 资产筛选与配置")
+        
+        # 步骤 1：按分类筛选
         selected_categories = st.multiselect("📁 步骤 1：按分类筛选", options=available_categories)
-    
-    filtered_tickers = all_tickers
-    if selected_categories:
-        filtered_tickers = [t for t in all_tickers if meta_map.get(t, {}).get('Category', 'Unknown') in selected_categories]
-    
-    asset_options_formatted = [f"{t} - {meta_map.get(t, {}).get('Name', t)}" for t in filtered_tickers]
-    formatted_to_ticker = {f"{t} - {meta_map.get(t, {}).get('Name', t)}": t for t in filtered_tickers}
-    ticker_to_formatted = {v: k for k, v in formatted_to_ticker.items()}
+        filtered_tickers = all_tickers
+        if selected_categories:
+            filtered_tickers = [t for t in all_tickers if meta_map.get(t, {}).get('Category', 'Unknown') in selected_categories]
+        
+        # 步骤 2：选择对比资产 (紧跟着步骤1)
+        asset_options_formatted = [f"{t} - {meta_map.get(t, {}).get('Name', t)}" for t in filtered_tickers]
+        formatted_to_ticker = {f"{t} - {meta_map.get(t, {}).get('Name', t)}": t for t in filtered_tickers}
+        ticker_to_formatted = {v: k for k, v in formatted_to_ticker.items()}
 
-    with col2:
         selected_formatted = st.multiselect("🔍 步骤 2：选择对比资产", options=asset_options_formatted)
-    selected_tickers = [formatted_to_ticker[f] for f in selected_formatted]
-    
-    if selected_tickers:
-        asset_names_for_ai = [meta_map.get(t, {}).get('Name', t) for t in selected_tickers]
-
-        df_plot = df_db[['Date'] + selected_tickers].copy()
-        df_ret = df_plot.set_index('Date')[selected_tickers].copy()
-        df_ret.ffill(inplace=True) 
-        df_returns = (df_ret.pct_change() * 100).reset_index()
-        df_returns.dropna(subset=['Date'], inplace=True)
-
+        selected_tickers = [formatted_to_ticker[f] for f in selected_formatted]
+        
         st.markdown("---")
         
-        # 🎚️ 全局时间滑块
-        min_date = df_plot['Date'].min().date()
-        max_date = df_plot['Date'].max().date()
-        selected_dates = st.slider("🗓️ 拖动滑块框选分析时间段：", min_value=min_date, max_value=max_date, value=(min_date, max_date), format="YYYY-MM-DD")
+        # 数据库维护区
+        st.header("🛠️ 数据库维护")
+        if st.button("🔄 一键日常同步", use_container_width=True):
+            with st.spinner("同步中..."): daily_sync()
+        
+        st.write("🎯 扩充监控池")
+        tickers_input = st.text_input("输入新代码 (逗号分隔):", key="ticker_input_sidebar")
+        if st.button("➕ 抓取并入库", use_container_width=True, key="add_asset_sidebar"):
+            with st.spinner("抓取中..."): add_new_assets(tickers_input)
+
+    # ==========================================
+    # 👉 主区域：只负责干净利落地展示图表和分析
+    # ==========================================
+    if selected_tickers:
+        asset_names_for_ai = [meta_map.get(t, {}).get('Name', t) for t in selected_tickers]
+        df_plot = df_db[['Date'] + selected_tickers].copy()
+        
+        # 主区域第一行：时间滑块
+        df_ret_tmp = df_plot.set_index('Date')[selected_tickers].copy()
+        df_ret_tmp.ffill(inplace=True) 
+        min_date = df_ret_tmp.index.min().date()
+        max_date = df_ret_tmp.index.max().date()
+        selected_dates = st.slider("🗓️ 拖动滑块框选分析时间段：", min_value=min_date, max_value=max_date, value=(min_date, max_date), format="YYYY-MM-DD", key="time_slider_drag")
         
         start_date_pd, end_date_pd = pd.to_datetime(selected_dates[0]), pd.to_datetime(selected_dates[1])
         time_range_str = f"{selected_dates[0]} 至 {selected_dates[1]}"
-
-        df_plot_filtered = df_plot[(df_plot['Date'] >= start_date_pd) & (df_plot['Date'] <= end_date_pd)].copy()
-        df_returns_filtered = df_returns[(df_returns['Date'] >= start_date_pd) & (df_returns['Date'] <= end_date_pd)].copy()
-
-        normalize = st.checkbox("🔥 开启【基准100】归一化", value=True)
-
-        # ==========================================
-        # 📊 图表 A：长线图表
-        # ==========================================
-        st.markdown("### 📊 图表 A: 长线累计走势")
         
+        df_plot_filtered = df_plot[(df_plot['Date'] >= start_date_pd) & (df_plot['Date'] <= end_date_pd)].copy()
+        df_ret_filtered = df_plot_filtered.set_index('Date')[selected_tickers].copy()
+        df_ret_filtered.ffill(inplace=True) 
+        df_returns_filtered = (df_ret_filtered.pct_change() * 100).reset_index() # (%)
+        df_returns_filtered.dropna(subset=['Date'], inplace=True)
+        
+        # ==========================================
+        # 📊 图表 A：长线累计走势
+        # ==========================================
+        normalize = st.checkbox(
+            "🔥 开启起点归一化对比", 
+            value=True,
+            key="norm_checkbox_clean"
+        )
+        st.markdown(f"### 📊 图表 A: 长线累计净值对比 (对数坐标系)")
+
         if normalize:
             for col in selected_tickers:
                 first_valid_idx = df_plot_filtered[col].first_valid_index()
                 if first_valid_idx is not None:
                     df_plot_filtered[col] = (df_plot_filtered[col] / df_plot_filtered.loc[first_valid_idx, col]) * 100
-            y_title = "基准净值 (100起步)"
+            y_title_a = "基准100累计净值"
         else:
-            y_title = "标的原始价格"
+            y_title_a = "价格"
 
         fig_line = px.line(df_plot_filtered.rename(columns=ticker_to_formatted), x='Date', y=[ticker_to_formatted[t] for t in selected_tickers])
         
         fig_line.update_layout(
-            height=400, 
+            height=550,
             hovermode="x unified", 
-            yaxis_title=y_title,
-            yaxis_type="log"  
+            yaxis_title=y_title_a,
+            yaxis_type="log", 
+            legend_title="代码"
         )
+        if not normalize: fig_line.update_layout(yaxis_tickformat=None)
         
-        st.plotly_chart(fig_line, use_container_width=True, key="chart_a")
+        st.plotly_chart(fig_line, use_container_width=True, key="chart_a_drag")
         st.markdown("---")
 
         # ==========================================
         # 📈 图表 B：短线图表
         # ==========================================
-        st.markdown("### 📈 图表 B: 单日涨跌幅波动率")
+        st.markdown("### 📈 图表 B: 单日涨跌幅波动散点图")
         fig_scatter = px.scatter(df_returns_filtered.rename(columns=ticker_to_formatted), x='Date', y=[ticker_to_formatted[t] for t in selected_tickers])
-        fig_scatter.update_traces(marker_size=1.5) 
-        fig_scatter.update_layout(height=350, hovermode="x unified", yaxis_title="单日涨跌幅 (%)")
-        st.plotly_chart(fig_scatter, use_container_width=True, key="chart_b")
+        fig_scatter.update_traces(marker_size=3)
+        fig_scatter.update_layout(
+            height=400, 
+            hovermode="x unified", 
+            yaxis_title="单日涨跌幅 (%)",
+            legend_title="代码",
+        )
+        st.plotly_chart(fig_scatter, use_container_width=True, key="chart_b_drag")
+        st.markdown("---")
+
+        # ==========================================
+        # 📊 图表 C：聚类相关性实现 (热力图)
+        # ==========================================
+        st.markdown("### 📊 图表 C: 资产聚类相关性矩阵 (Heatmap)")
+        if len(selected_tickers) >= 2:
+            corr_matrix = df_returns_filtered[selected_tickers].corr()
+            
+            corr_matrix_formatted = corr_matrix.copy()
+            formatted_names_list = [meta_map.get(t, {}).get('Name', t) for t in corr_matrix.columns]
+            corr_matrix_formatted.columns = formatted_names_list
+            corr_matrix_formatted.index = formatted_names_list
+            
+            fig_heatmap = ff.create_annotated_heatmap(
+                z=corr_matrix_formatted.values,
+                x=list(corr_matrix_formatted.columns),
+                y=list(corr_matrix_formatted.index),
+                annotation_text=corr_matrix_formatted.round(3).values,
+                colorscale='RdBu_r',
+                zmin=-1, zmax=1 
+            )
+            fig_heatmap.update_layout(
+                height=450,
+                margin=dict(t=50, b=50, l=120, r=50) 
+            )
+            st.plotly_chart(fig_heatmap, use_container_width=True, key="chart_corr")
+            corr_matrix_text = corr_matrix_formatted.round(3).to_string()
+        else:
+            st.info("👆 请至少选择两个资产以进行相关性分析。")
+            corr_matrix_text = "👆 请至少选择两个资产以进行相关性分析。"
 
         st.markdown("---")
 
@@ -274,14 +326,14 @@ try:
         # 🤖 综合 AI 解读区
         # ==========================================
         st.markdown("### 🧠 综合 AI 投研大脑")
-        st.write("结合上方的【图表A：长线收益】与【图表B：短线风险】，一键生成综合诊断报告。")
+        st.write("结合上方的【表现对比图A】、【单日波动图B】与【聚类热力图C】，一键生成综合诊断报告。")
         
         if st.button("🪄 一键生成综合诊断报告", type="primary", use_container_width=True):
-            with st.spinner("AI 正在同时深度分析长线与短线数据..."):
-                report = ai_comprehensive_analysis(df_plot_filtered, df_returns_filtered, asset_names_for_ai, time_range_str)
+            with st.spinner("AI 正在同时深度分析长线、短线与相关性维度数据..."):
+                report = ai_comprehensive_analysis(df_plot_filtered, df_returns_filtered, corr_matrix_text, asset_names_for_ai, time_range_str)
                 st.success(report)
 
     else:
-        st.info("👆 请先在上方漏斗中选择至少一个资产。")
+        st.info("👈 请在左侧边栏完成步骤1(分类)和步骤2(资产)的选择。")
 except Exception as e:
     st.error(f"❌ 系统发生异常: {e}")
